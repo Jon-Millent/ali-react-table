@@ -5,6 +5,7 @@ import styled from 'styled-components'
 import { internals } from '../../internals'
 import { collectNodes, makeRecursiveMapper, mergeCellProps } from '../../utils'
 import { TablePipeline } from '../pipeline'
+import { AbstractTreeNode } from '../../interfaces'
 
 function clamp(min: number, x: number, max: number) {
   return Math.max(min, Math.min(max, x))
@@ -31,6 +32,17 @@ const ResizeHandle = styled.span`
   }
 `
 
+interface NextSizeProps {
+  col: AbstractTreeNode;
+  width: number;
+  index: number;
+}
+
+// interface ChangeSizeTarget {
+//   target: AbstractTreeNode;
+//   index: number;
+// }
+
 export interface ColumnResizeFeatureOptions {
   /** 非受控用法：默认的列宽数组 */
   defaultSizes?: number[]
@@ -38,7 +50,7 @@ export interface ColumnResizeFeatureOptions {
   /** 受控用法：列宽数组 */
   sizes?: number[]
   /** 受控用法：修改宽度的回调函数 */
-  onChangeSizes?(nextSizes: number[]): void
+  onChangeSizes?(nextSizes: number[], proSize: NextSizeProps): void
 
   /** 列的最小宽度，默认为 60 */
   minSize?: number
@@ -78,12 +90,20 @@ export function columnResize(opts: ColumnResizeFeatureOptions = {}) {
       }
     })
 
-    const onChangeSizes = (nextSizes: number[]) => {
-      pipeline.setStateAtKey(stateKey, nextSizes)
-      opts.onChangeSizes?.(nextSizes)
+    const onChangeSizes = (nextSizes: NextSizeProps[]) => {
+      const size = nextSizes.map(item=> item.width)
+      pipeline.setStateAtKey(stateKey, size)
+
+      const target = nextSizes[0]
+
+      opts.onChangeSizes?.(size, {
+        width: size[target.index],
+        col: target.col,
+        index: target.index
+      })
     }
 
-    const startResize = (startIndex: number, endIndex: number, e: React.MouseEvent<HTMLSpanElement>) => {
+    const startResize = (startIndex: number, endIndex: number, e: React.MouseEvent<HTMLSpanElement>, node: AbstractTreeNode) => {
       const startX = e.clientX
       const target = e.target as HTMLSpanElement
 
@@ -106,7 +126,13 @@ export function columnResize(opts: ColumnResizeFeatureOptions = {}) {
           // 因为前面的列宽都进行了四舍五入，最后一列的变化量需要使用 deltaRemaining 以避免误差
           nextSizes[endIndex - 1] = clamp(minSize, sizes[endIndex - 1] + deltaRemaining, maxSize)
 
-          return nextSizes
+          return nextSizes.map(item=> {
+            return {
+              width: item,
+              col: node,
+              index: startIndex
+            }
+          })
         }),
       )
 
@@ -149,7 +175,7 @@ export function columnResize(opts: ColumnResizeFeatureOptions = {}) {
                 className="resize-handle"
                 var-handleBackground={opts.handleBackground}
                 var-handleHoverBackground={opts.handleHoverBackground}
-                onMouseDown={(e: React.MouseEvent<HTMLSpanElement>) => startResize(startIndex, endIndex, e)}
+                onMouseDown={(e: React.MouseEvent<HTMLSpanElement>) => startResize(startIndex, endIndex, e, col)}
               />
             </>
           ),
